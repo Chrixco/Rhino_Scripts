@@ -847,8 +847,10 @@ def build_cross_section_plane(point, tangent, normal, tolerance):
 
     # Banking angle: how much to tilt from vertical based on terrain slope
     # Get angle between vertical (world Z) and terrain normal
-    # Use instance method: v1.DotProduct(v2) instead of static method
-    dot_product = world_up.DotProduct(normal)
+    # Compute dot product manually: (v1.x * v2.x) + (v1.y * v2.y) + (v1.z * v2.z)
+    dot_product = (world_up.X * normal.X +
+                   world_up.Y * normal.Y +
+                   world_up.Z * normal.Z)
     # Clamp to avoid numerical issues
     dot_product = max(-1.0, min(1.0, dot_product))
     banking_angle_rad = math.acos(dot_product)
