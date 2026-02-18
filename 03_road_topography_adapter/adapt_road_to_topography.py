@@ -1736,15 +1736,17 @@ def main():
     # =========================================================================
     # Step 1: Ask for layer names
     # =========================================================================
+    print("\n[STEP 1] Asking for layer names...")
     terrain_layer, road_layer = ask_layer_names()
     if terrain_layer is None or road_layer is None:
-        print("Aborted: Layer selection cancelled.")
+        print("[ABORT] Layer selection cancelled.")
         return
+    print("[OK] Terrain layer: '{}', Road layer: '{}'".format(terrain_layer, road_layer))
 
     # =========================================================================
     # Step 2: Detect terrain object
     # =========================================================================
-    print("\nDetecting terrain from layer '{}'...".format(terrain_layer))
+    print("\n[STEP 2] Detecting terrain from layer '{}'...".format(terrain_layer))
     terrain_objects = get_objects_from_layer(terrain_layer)
 
     if not terrain_objects:
@@ -1754,8 +1756,9 @@ def main():
             "and run again.".format(terrain_layer),
             title="Road Adapter - No Terrain Found"
         )
-        print("Aborted: No objects on terrain layer.")
+        print("[ABORT] No objects on terrain layer.")
         return
+    print("[OK] Found {} terrain object(s)".format(len(terrain_objects)))
 
     terrain_id = terrain_objects[0]
     if len(terrain_objects) > 1:
@@ -1882,10 +1885,12 @@ def main():
     # =========================================================================
     rs.UnselectAllObjects()
     rs.EnableRedraw(False)
+    print("\n[STEP 8] Opening undo record and disabling redraw...")
     undo_serial = begin_undo_record("AdaptRoadToTopography")
+    print("[OK] Undo record opened: serial = {}".format(undo_serial))
 
     try:
-        print("\nProjection:")
+        print("\n[STEP 8.5] PROJECTION:")
         print("  Projecting centerline to terrain...")
         projected_cl = project_centerline_to_terrain(
             centerline, terrain_geom, terrain_type, tolerance
@@ -1970,12 +1975,16 @@ def main():
         # =====================================================================
         # Step 13: Set up output layers and publish geometry
         # =====================================================================
-        print("\nLayers:")
+        print("\n[STEP 13] LAYERS - Setting up output layers...")
+        print("[DEBUG] Calling setup_output_layers()...")
         setup_output_layers()
+        print("[OK] Output layers created")
 
+        print("[DEBUG] Calling publish_results()...")
         output_ids = publish_results(
             projected_cl, road_surface, sections, add_debug
         )
+        print("[OK] publish_results() completed")
 
         # =====================================================================
         # Step 14: Calculate and print statistics
@@ -1987,14 +1996,20 @@ def main():
         print_report(stats, terrain_name, road_name, params, output_ids)
 
     except Exception as exc:
-        print("\nUnexpected error: {}".format(str(exc)))
+        print("\n[ERROR] UNEXPECTED EXCEPTION:")
+        print("[ERROR] {}".format(str(exc)))
         import traceback
+        print("\n[ERROR] Full traceback:")
         traceback.print_exc()
 
     finally:
+        print("\n[CLEANUP] Closing undo record...")
         end_undo_record(undo_serial)
+        print("[CLEANUP] Re-enabling redraw...")
         rs.EnableRedraw(True)
+        print("[CLEANUP] Redrawing viewports...")
         sc.doc.Views.Redraw()
+        print("\n[DONE] Script execution completed.")
 
 
 # =============================================================================
