@@ -160,28 +160,6 @@ def ensure_layer(layer_name, color_rgb=None, parent_layer=None):
     return layer_name
 
 
-def add_object_to_layer(obj_id, layer_name):
-    """
-    Moves a Rhino object to the specified layer.
-
-    Parameters
-    ----------
-    obj_id : System.Guid
-    layer_name : str
-
-    Returns
-    -------
-    bool : True if successful.
-    """
-    if obj_id is None:
-        return False
-    try:
-        rs.ObjectLayer(obj_id, layer_name)
-        return True
-    except Exception:
-        return False
-
-
 def setup_output_layers():
     """
     Creates all required output layers for the road adaptation result.
@@ -1203,11 +1181,25 @@ def add_curve_to_layer(curve, layer_name, name=None):
     if curve is None or not curve.IsValid:
         return None
 
-    obj_id = sc.doc.Objects.AddCurve(curve)
+    # Get the layer index - this is the CORRECT way to specify layer in RhinoCommon
+    layer_index = sc.doc.Layers.Find(layer_name, ignore_deleted_layers=True)
+    if layer_index < 0:
+        # If layer doesn't exist, find will return -1; ensure_layer should have created it
+        print("    Warning: Layer '{}' not found; creating it.".format(layer_name))
+        ensure_layer(layer_name)
+        layer_index = sc.doc.Layers.Find(layer_name, ignore_deleted_layers=True)
+        if layer_index < 0:
+            return None
+
+    # Create ObjectAttributes with correct layer index - KEY FIX
+    attr = rg.ObjectAttributes()
+    attr.LayerIndex = layer_index
+
+    # Add curve with attributes (layer is now properly assigned)
+    obj_id = sc.doc.Objects.AddCurve(curve, attr)
     if obj_id == System.Guid.Empty:
         return None
 
-    add_object_to_layer(obj_id, layer_name)
     if name:
         rs.ObjectName(obj_id, name)
 
@@ -1231,11 +1223,25 @@ def add_brep_to_layer(brep, layer_name, name=None):
     if brep is None or not brep.IsValid:
         return None
 
-    obj_id = sc.doc.Objects.AddBrep(brep)
+    # Get the layer index - this is the CORRECT way to specify layer in RhinoCommon
+    layer_index = sc.doc.Layers.Find(layer_name, ignore_deleted_layers=True)
+    if layer_index < 0:
+        # If layer doesn't exist, find will return -1; ensure_layer should have created it
+        print("    Warning: Layer '{}' not found; creating it.".format(layer_name))
+        ensure_layer(layer_name)
+        layer_index = sc.doc.Layers.Find(layer_name, ignore_deleted_layers=True)
+        if layer_index < 0:
+            return None
+
+    # Create ObjectAttributes with correct layer index - KEY FIX
+    attr = rg.ObjectAttributes()
+    attr.LayerIndex = layer_index
+
+    # Add brep with attributes (layer is now properly assigned)
+    obj_id = sc.doc.Objects.AddBrep(brep, attr)
     if obj_id == System.Guid.Empty:
         return None
 
-    add_object_to_layer(obj_id, layer_name)
     if name:
         rs.ObjectName(obj_id, name)
 
