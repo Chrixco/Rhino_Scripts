@@ -823,20 +823,20 @@ def build_cross_section_plane(point, tangent, normal, tolerance):
 
     The plane is defined so that:
     - Origin = station point on the projected centerline
-    - X axis = cross-section direction (perpendicular to tangent in terrain)
-    - Y axis = terrain normal direction (road slope direction)
+    - X axis = cross-section direction (perpendicular to road in horizontal plane)
+    - Y axis = road slope direction (banking angle from terrain)
     - Z axis = tangent direction (road travel direction)
 
-    Strategy for cross-section direction:
-        We want the cross-section profile to lie perpendicular to the road
-        direction AND respect the terrain slope. The cross-section X axis
-        is computed as the cross product of the tangent and the terrain
-        normal. This gives a vector that is:
-        - Perpendicular to the road direction (no drift along road)
-        - Lies in the terrain surface tangent plane
+    Strategy for cross-section direction (FIXED):
+        The cross-section X axis MUST be perpendicular to the road tangent
+        in the HORIZONTAL plane (XY plane). This ensures all cross-sections
+        are parallel and don't twist.
 
-    Fallback: if tangent and normal are nearly parallel (very steep road
-        going straight up a cliff), fall back to world-XY perpendicular.
+        Then we apply banking based on terrain slope, but the perpendicular
+        direction stays constant.
+
+    This creates a "ribbon" that follows the road centerline, with consistent
+    width offset on both sides, that banks with the terrain slope.
 
     Parameters
     ----------
@@ -849,37 +849,53 @@ def build_cross_section_plane(point, tangent, normal, tolerance):
     -------
     Rhino.Geometry.Plane or None
     """
-    # Cross-section X axis: perpendicular to road tangent, lies in terrain plane
-    cross_dir = rg.Vector3d.CrossProduct(tangent, normal)
+    # Project tangent to horizontal plane (remove Z component)
+    tangent_horizontal = rg.Vector3d(tangent.X, tangent.Y, 0.0)
 
-    # If cross product is near-zero the tangent and normal are parallel
-    # (vertical cliff face). Fall back to using world Y as the cross-section.
-    if cross_dir.Length < tolerance:
-        # Tangent is nearly vertical; use world horizontal cross direction
-        world_x   = rg.Vector3d(1.0, 0.0, 0.0)
-        cross_dir = rg.Vector3d.CrossProduct(tangent, world_x)
-        if cross_dir.Length < tolerance:
-            world_y   = rg.Vector3d(0.0, 1.0, 0.0)
-            cross_dir = rg.Vector3d.CrossProduct(tangent, world_y)
-        if cross_dir.Length < tolerance:
-            return None
+    # If tangent is nearly vertical (straight up/down), use world X as reference
+    if tangent_horizontal.Length < tolerance:
+        tangent_horizontal = rg.Vector3d(1.0, 0.0, 0.0)
+    else:
+        tangent_horizontal.Unitize()
 
+    # Cross-section X axis: perpendicular in horizontal plane (Z cross tangent_h)
+    world_z = rg.Vector3d(0.0, 0.0, 1.0)
+    cross_dir = rg.Vector3d.CrossProduct(world_z, tangent_horizontal)
     cross_dir.Unitize()
 
-    # Ensure cross_dir has positive X component for consistency
-    # (so left/right edge labelling is deterministic across sections)
-    if cross_dir.X < 0:
-        cross_dir = -cross_dir
+    # Now we have a consistent perpendicular direction that doesn't twist
+    # Apply banking: rotate up_axis toward terrain normal by terrain slope angle
+    world_up = rg.Vector3d(0.0, 0.0, 1.0)
 
-    # Recompute a true Y axis that is orthogonal to both cross_dir and tangent
-    y_axis = rg.Vector3d.CrossProduct(cross_dir, tangent)
-    if y_axis.IsZero:
-        y_axis = normal
-    else:
-        y_axis.Unitize()
+    # Banking angle: how much to tilt from vertical based on terrain slope
+    # Get angle between vertical (world Z) and terrain normal
+    dot_product = rg.Vector3d.DotProduct(world_up, normal)
+    # Clamp to avoid numerical issues
+    dot_product = max(-1.0, min(1.0, dot_product))
+    banking_angle_rad = math.acos(dot_product)
 
-    plane = rg.Plane(point, cross_dir, y_axis)
-    return plane
+    # Banking direction is perpendicular to both cross_dir and tangent
+    banking_dir = rg.Vector3d.CrossProduct(cross_dir, tangent)
+    banking_dir.Unitize()
+
+    # Rotate world_up by banking angle around cross_dir
+    # Use Rodrigues rotation formula or just lerp for simplicity
+    # Actually, for a plane, we just need the Y axis to point upslope
+    up_axis = world_up
+    # Blend toward terrain normal based on slope
+    slope_factor = 1.0 - dot_product  # 0 = flat, 1 = vertical
+    if slope_factor > tolerance:
+        up_axis = world_up * (1.0 - slope_factor * 0.5) + normal * (slope_factor * 0.5)
+        up_axis.Unitize()
+
+    # Create plane with consistent cross direction
+    try:
+        plane = rg.Plane(point, cross_dir, up_axis)
+        if not plane.IsValid:
+            return None
+        return plane
+    except:
+        return None
 
 
 def create_cross_section_curve(station, road_width, num_points,
